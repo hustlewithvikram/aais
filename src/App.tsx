@@ -40,7 +40,7 @@ function renderVector(xml: string): RenderResult {
   const height = numberAttr(root, 'viewportHeight', 108);
   if (width <= 0 || height <= 0) return { svg: '', error: 'viewportWidth and viewportHeight must be greater than zero.', warnings: [] };
   const warnings: string[] = [];
-  let clipId = 0;
+  let clipId = 0, paintId = 0;
   const defs: string[] = [];
   const escape = (s: string) => s.replace(/&/g, '&amp;').replace(/"/g, '&quot;').replace(/</g, '&lt;');
   const renderChildren = (parent: Element): string => {
@@ -62,13 +62,48 @@ function renderVector(xml: string): RenderResult {
     if (tag === 'path') {
       const d = attr(node, 'pathData');
       if (!d) { warnings.push('A path has no pathData and was skipped.'); return ''; }
-      if (attr(node, 'trimPathStart') || attr(node, 'trimPathEnd') || attr(node, 'trimPathOffset')) warnings.push('trimPath attributes are not supported yet.');
       const fillRaw = attr(node, 'fillColor', '#000000'), strokeRaw = attr(node, 'strokeColor', 'none');
       if (fillRaw.startsWith('@') || fillRaw.startsWith('?') || strokeRaw.startsWith('@') || strokeRaw.startsWith('?')) warnings.push('Android color/theme references are not resolved; replace them with literal hex colors.');
-      const fill = colorValue(fillRaw, numberAttr(node, 'fillAlpha', 1));
+      const fillAlpha = numberAttr(node, 'fillAlpha', 1);
+      const fill = colorValue(fillRaw, fillAlpha);
       const stroke = colorValue(strokeRaw, numberAttr(node, 'strokeAlpha', 1));
+      const gradientNode = Array.from(node.getElementsByTagName('*')).find(child => child.localName === 'gradient');
+      let fillPaint = fill.color, fillOpacity = fill.opacity;
+      if (gradientNode) {
+        const gradientType = attr(gradientNode, 'type', 'linear');
+        if (gradientType === 'sweep') {
+          warnings.push('Sweep gradients are not supported by the browser SVG renderer.');
+        } else {
+          const id = 'paint' + (++paintId);
+          const tileMode = attr(gradientNode, 'tileMode', 'clamp');
+          const spread = tileMode === 'repeat' ? 'repeat' : tileMode === 'mirror' ? 'reflect' : 'pad';
+          const start = colorValue(attr(gradientNode, 'startColor', '#000000'), 1);
+          const end = colorValue(attr(gradientNode, 'endColor', '#000000'), 1);
+          const centerRaw = attr(gradientNode, 'centerColor');
+          const center = centerRaw ? colorValue(centerRaw, 1) : null;
+          const stops = '<stop offset="0" stop-color="' + start.color + '" stop-opacity="' + start.opacity + '"/>' +
+            (center ? '<stop offset="0.5" stop-color="' + center.color + '" stop-opacity="' + center.opacity + '"/>' : '') +
+            '<stop offset="1" stop-color="' + end.color + '" stop-opacity="' + end.opacity + '"/>';
+          if (gradientType === 'radial') {
+            const cx = numberAttr(gradientNode, 'centerX', width / 2), cy = numberAttr(gradientNode, 'centerY', height / 2);
+            const radius = numberAttr(gradientNode, 'gradientRadius', Math.min(width, height) / 2);
+            defs.push('<radialGradient id="' + id + '" cx="' + cx + '" cy="' + cy + '" r="' + radius + '" gradientUnits="userSpaceOnUse" spreadMethod="' + spread + '">' + stops + '</radialGradient>');
+          } else {
+            const x1 = numberAttr(gradientNode, 'startX', 0), y1 = numberAttr(gradientNode, 'startY', 0);
+            const x2 = numberAttr(gradientNode, 'endX', width), y2 = numberAttr(gradientNode, 'endY', 0);
+            defs.push('<linearGradient id="' + id + '" x1="' + x1 + '" y1="' + y1 + '" x2="' + x2 + '" y2="' + y2 + '" gradientUnits="userSpaceOnUse" spreadMethod="' + spread + '">' + stops + '</linearGradient>');
+          }
+          fillPaint = 'url(#' + id + ')'; fillOpacity = fillAlpha;
+        }
+      }
+      const trimStart = numberAttr(node, 'trimPathStart', 0), trimEnd = numberAttr(node, 'trimPathEnd', 1), trimOffset = numberAttr(node, 'trimPathOffset', 0);
+      const isTrimmed = trimStart !== 0 || trimEnd !== 1 || trimOffset !== 0;
+      if (isTrimmed) warnings.push('trimPath is applied to the stroke; filled-path trimming is not supported.');
       const fillType = attr(node, 'fillType') === 'evenOdd' ? 'evenodd' : 'nonzero';
-      return '<path d="' + escape(d) + '" fill="' + escape(fill.color) + '" fill-opacity="' + fill.opacity + '" fill-rule="' + fillType + '" stroke="' + escape(stroke.color) + '" stroke-opacity="' + stroke.opacity + '" stroke-width="' + numberAttr(node, 'strokeWidth', 0) + '" stroke-linecap="' + escape(attr(node, 'strokeLineCap', 'butt')) + '" stroke-linejoin="' + escape(attr(node, 'strokeLineJoin', 'miter')) + '" stroke-miterlimit="' + numberAttr(node, 'strokeMiterLimit', 4) + '"/>';
+      const dashLength = Math.max(0, Math.min(1, trimEnd - trimStart));
+      const dashOffset = -(((trimStart + trimOffset) % 1 + 1) % 1);
+      const trimAttrs = isTrimmed ? ' pathLength="1" stroke-dasharray="' + dashLength + ' 1" stroke-dashoffset="' + dashOffset + '"' : '';
+      return '<path d="' + escape(d) + '"' + trimAttrs + ' fill="' + (isTrimmed ? 'none' : escape(fillPaint)) + '" fill-opacity="' + fillOpacity + '" fill-rule="' + fillType + '" stroke="' + escape(stroke.color) + '" stroke-opacity="' + stroke.opacity + '" stroke-width="' + numberAttr(node, 'strokeWidth', 0) + '" stroke-linecap="' + escape(attr(node, 'strokeLineCap', 'butt')) + '" stroke-linejoin="' + escape(attr(node, 'strokeLineJoin', 'miter')) + '" stroke-miterlimit="' + numberAttr(node, 'strokeMiterLimit', 4) + '"/>';
     }
     if (tag === 'clip-path') return '';
     if (tag === 'group') {
