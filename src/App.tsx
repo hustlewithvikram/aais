@@ -77,7 +77,7 @@ export default function App() {
     if (shape === 'circle') ctx.arc(size/2, size/2, size/2, 0, Math.PI*2);
     else if (shape === 'square') ctx.rect(0, 0, size, size);
     else if (shape === 'teardrop') {
-      ctx.moveTo(0,0); ctx.lineTo(256,0); ctx.bezierCurveTo(397,0,512,115,512,256); ctx.bezierCurveTo(512,397,397,512,256,512); ctx.bezierCurveTo(115,512,0,397,0,256); ctx.closePath();
+      ctx.moveTo(256,0); ctx.bezierCurveTo(394,0,512,102,512,256); ctx.bezierCurveTo(512,394,394,512,256,512); ctx.bezierCurveTo(118,512,0,394,0,256); ctx.bezierCurveTo(0,118,118,0,256,0); ctx.closePath();
     } else {
       const radius = shape === 'rounded' ? 112 : 150;
       ctx.roundRect(0, 0, size, size, radius);
