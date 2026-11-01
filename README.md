@@ -19,8 +19,8 @@ The production output is written to dist/.
 - Foreground, background and monochrome VectorDrawable XML layers.
 - Live preview with circle, squircle, rounded-square, square and teardrop masks.
 - Android ARGB color conversion to SVG color plus opacity.
-- Solid fills, strokes, fill rules, stroke caps/joins and nested group transforms.
-- Basic clip-path support.
+- Solid fills, linear/radial gradients, strokes, fill rules, stroke caps/joins and nested group transforms.
+- Basic clip-path support and stroke-based trim-path rendering.
 - Foreground scale and X/Y positioning.
 - Layer visibility controls and editable XML source.
 - XML syntax/root validation with unsupported-feature warnings.
@@ -30,7 +30,7 @@ The production output is written to dist/.
 
 ## VectorDrawable compatibility
 
-This is a browser renderer for common static VectorDrawable assets, not a full Android resource compiler. It supports vector roots, paths, nested groups, solid colors, alpha, strokes, fill types and basic clip-paths. Android resource references (@color, ?attr), theme resolution, aapt gradient wrappers, gradients, trim-path, animated vectors, selectors and platform-specific rendering behavior are not resolved. Unsupported elements are surfaced as warnings rather than silently treated as fully supported. Validate exported resources in Android Studio and test launcher behavior on target Android versions.
+This is a browser renderer for common static VectorDrawable assets, not a full Android resource compiler. It supports vector roots, paths, nested groups, solid colors, alpha, strokes, fill types, linear/radial gradients, basic clip-paths and stroke-based trim-paths. Filled-path trimming is not supported. Android resource references (@color, ?attr), theme resolution, sweep gradients, animated vectors, selectors and platform-specific rendering behavior are not resolved. Unsupported elements are surfaced as warnings rather than silently treated as fully supported. Validate exported resources in Android Studio and test launcher behavior on target Android versions.
 
 ## Deploy to Vercel
 
