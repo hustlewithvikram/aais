@@ -63,8 +63,10 @@ function renderVector(xml: string): RenderResult {
       const d = attr(node, 'pathData');
       if (!d) { warnings.push('A path has no pathData and was skipped.'); return ''; }
       if (attr(node, 'trimPathStart') || attr(node, 'trimPathEnd') || attr(node, 'trimPathOffset')) warnings.push('trimPath attributes are not supported yet.');
-      const fill = colorValue(attr(node, 'fillColor', '#000000'), numberAttr(node, 'fillAlpha', 1));
-      const stroke = colorValue(attr(node, 'strokeColor', 'none'), numberAttr(node, 'strokeAlpha', 1));
+      const fillRaw = attr(node, 'fillColor', '#000000'), strokeRaw = attr(node, 'strokeColor', 'none');
+      if (fillRaw.startsWith('@') || fillRaw.startsWith('?') || strokeRaw.startsWith('@') || strokeRaw.startsWith('?')) warnings.push('Android color/theme references are not resolved; replace them with literal hex colors.');
+      const fill = colorValue(fillRaw, numberAttr(node, 'fillAlpha', 1));
+      const stroke = colorValue(strokeRaw, numberAttr(node, 'strokeAlpha', 1));
       const fillType = attr(node, 'fillType') === 'evenOdd' ? 'evenodd' : 'nonzero';
       return '<path d="' + escape(d) + '" fill="' + escape(fill.color) + '" fill-opacity="' + fill.opacity + '" fill-rule="' + fillType + '" stroke="' + escape(stroke.color) + '" stroke-opacity="' + stroke.opacity + '" stroke-width="' + numberAttr(node, 'strokeWidth', 0) + '" stroke-linecap="' + escape(attr(node, 'strokeLineCap', 'butt')) + '" stroke-linejoin="' + escape(attr(node, 'strokeLineJoin', 'miter')) + '" stroke-miterlimit="' + numberAttr(node, 'strokeMiterLimit', 4) + '"/>';
     }
@@ -141,8 +143,7 @@ export default function App() {
     if (shape === 'circle') ctx.arc(size/2, size/2, size/2, 0, Math.PI*2);
     else if (shape === 'square') ctx.rect(0, 0, size, size);
     else if (shape === 'teardrop') {
-      ctx.moveTo(256,0); ctx.bezierCurveTo(395,0,512,102,512,256); ctx.bezierCurveTo(512,399,399,512,256,512);
-      ctx.bezierCurveTo(113,512,0,399,0,256); ctx.bezierCurveTo(0,113,113,0,256,0);
+      ctx.moveTo(0,0); ctx.lineTo(256,0); ctx.bezierCurveTo(397,0,512,115,512,256); ctx.bezierCurveTo(512,397,397,512,256,512); ctx.bezierCurveTo(115,512,0,397,0,256); ctx.closePath();
     } else {
       const radius = shape === 'rounded' ? 112 : 150;
       ctx.roundRect(0, 0, size, size, radius);
