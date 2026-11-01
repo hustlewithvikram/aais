@@ -133,7 +133,9 @@ export default function App() {
     return img;
   }
   async function exportPng() {
-    if (fgResult.error || bgResult.error) { setMessage('Fix foreground/background XML errors before exporting.'); return; }
+    const foregroundResult = active === 'monochrome' ? monoResult : fgResult;
+    const foregroundVisible = active === 'monochrome' ? showMono : showFg;
+    if (foregroundResult.error || bgResult.error) { setMessage('Fix the active foreground and background XML errors before exporting.'); return; }
     const size = 512, canvas = document.createElement('canvas'); canvas.width = size; canvas.height = size;
     const ctx = canvas.getContext('2d');
     if (!ctx) { setMessage('Canvas is unavailable in this browser.'); return; }
@@ -156,8 +158,8 @@ export default function App() {
         ctx.drawImage(img, 0, 0, size, size);
       }
     }
-    if (showFg && fgResult.svg) {
-      const img = await imageFromSvg(fgResult.svg), s = size * scale / 100;
+    if (foregroundVisible && foregroundResult.svg) {
+      const img = await imageFromSvg(foregroundResult.svg), s = size * scale / 100;
       ctx.save(); ctx.translate(size/2 + x*size/100, size/2 + y*size/100); ctx.drawImage(img, -s/2, -s/2, s, s); ctx.restore();
     }
     ctx.restore();
@@ -167,12 +169,12 @@ export default function App() {
     window.setTimeout(() => URL.revokeObjectURL(url), 1000); setMessage('512 × 512 PNG exported');
   }
   async function exportResources() {
-    if (fgResult.error || bgResult.error || (showMono && monoResult.error)) { setMessage('Fix XML errors before exporting resources.'); return; }
+    if (fgResult.error || bgResult.error || (mono.trim() && monoResult.error)) { setMessage('Fix XML errors before exporting resources.'); return; }
     const zip = new JSZip();
     zip.file('res/drawable/ic_launcher_foreground.xml', fg);
     zip.file('res/drawable/ic_launcher_background.xml', bg);
-    if (showMono) zip.file('res/drawable/ic_launcher_monochrome.xml', mono);
-    const monoTag = showMono ? '\n    <monochrome android:drawable="@drawable/ic_launcher_monochrome"/>' : '';
+    if (mono.trim()) zip.file('res/drawable/ic_launcher_monochrome.xml', mono);
+    const monoTag = mono.trim() ? '\n    <monochrome android:drawable="@drawable/ic_launcher_monochrome"/>' : '';
     zip.file('res/mipmap-anydpi-v26/ic_launcher.xml', '<?xml version="1.0" encoding="utf-8"?>\n<adaptive-icon xmlns:android="http://schemas.android.com/apk/res/android">\n    <background android:drawable="@drawable/ic_launcher_background"/>\n    <foreground android:drawable="@drawable/ic_launcher_foreground"/>' + monoTag + '\n</adaptive-icon>');
     zip.file('README.txt', 'Copy the res/ folder into app/src/main/res/. Set android:icon="@mipmap/ic_launcher" in your manifest. The monochrome layer is included when enabled and is used by supported Android versions for themed icons. The launcher applies its own adaptive mask; the exported PNG is a masked preview.');
     const blob = await zip.generateAsync({type:'blob'}), url = URL.createObjectURL(blob), a = document.createElement('a');
