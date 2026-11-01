@@ -1,35 +1,49 @@
 # Android Adaptive Icon Studio
 
-A browser-based Android Adaptive Icon editor built with React, TypeScript and Vite. Import Android Vector Drawable XML for foreground and background layers, preview launcher masks, edit XML, and export PNG or Android resource files.
+A client-side Android Adaptive Icon editor built with React, TypeScript and Vite. Import foreground, background and monochrome Android VectorDrawable XML, inspect rendered layers, preview launcher masks, edit XML and export Android resources or a masked 512 × 512 PNG.
 
-## Getting started
+## Run locally
 
-```bash
-npm install
-npm run dev
-```
+    npm install
+    npm run dev
 
 ## Production build
 
-```bash
-npm run build
-npm run preview
-```
+    npm run build
+    npm run preview
+
+The production output is written to dist/.
 
 ## Features
 
-- Import foreground and background Android Vector Drawable XML files.
-- Live layered preview with circle, squircle, rounded-square, square and teardrop masks.
-- Edit XML directly with basic XML/vector validation.
-- Adjust foreground scale and X/Y position.
-- Toggle layer visibility and inspect a grayscale preview.
-- Export a 512 × 512 PNG or a ZIP containing Android `res/drawable` and `res/mipmap-anydpi-v26` resources.
-- Dark and light themes.
-- Client-side processing; source XML is not uploaded to a server.
+- Foreground, background and monochrome VectorDrawable XML layers.
+- Live preview with circle, squircle, rounded-square, square and teardrop masks.
+- Android ARGB color conversion to SVG color plus opacity.
+- Solid fills, strokes, fill rules, stroke caps/joins and nested group transforms.
+- Basic clip-path support.
+- Foreground scale and X/Y positioning.
+- Layer visibility controls and editable XML source.
+- XML syntax/root validation with unsupported-feature warnings.
+- Transparent PNG output when the background layer is hidden; PNG is clipped to the selected launcher mask.
+- Android resource ZIP with adaptive icon XML and optional Android 13+ monochrome drawable.
+- Light and dark themes; file processing stays in the browser.
 
-## Current XML support
+## VectorDrawable compatibility
 
-The renderer supports common `<vector>`, `<path>` and nested `<group>` elements, including path data, solid fill/stroke colors, alpha, fill type and basic group transforms. It is not a complete Android VectorDrawable implementation yet: gradients, clip paths, trim paths, animated vectors, theme attributes and all Android resource/color references are not fully supported. Verify production assets on an Android emulator or device.
+This is a browser renderer for common static VectorDrawable assets, not a full Android resource compiler. It supports vector roots, paths, nested groups, solid colors, alpha, strokes, fill types and basic clip-paths. Android resource references (@color, ?attr), theme resolution, aapt gradient wrappers, gradients, trim-path, animated vectors, selectors and platform-specific rendering behavior are not resolved. Unsupported elements are surfaced as warnings rather than silently treated as fully supported. Validate exported resources in Android Studio and test launcher behavior on target Android versions.
+
+## Deploy to Vercel
+
+Import this repository in Vercel and use:
+
+- Framework preset: Vite
+- Root directory: ./
+- Build command: npm run build
+- Output directory: dist
+- Install command: npm install
+- Production branch: master
+
+No server, environment variables or backend are required. A vercel.json is included for SPA fallback routing.
 
 ## Stack
 
