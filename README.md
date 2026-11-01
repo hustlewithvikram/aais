@@ -17,6 +17,7 @@ The production output is written to dist/.
 ## Features
 
 - Foreground, background and monochrome VectorDrawable XML layers.
+- Import XML either by selecting a local file or pasting XML text directly into the selected layer, with validation before applying.
 - Live preview with circle, squircle, rounded-square, square and teardrop masks.
 - Android ARGB color conversion to SVG color plus opacity.
 - Solid fills, linear/radial gradients, strokes, fill rules, stroke caps/joins and nested group transforms.
