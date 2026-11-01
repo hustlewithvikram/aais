@@ -1,50 +1,63 @@
 # Android Adaptive Icon Studio
 
-A client-side Android Adaptive Icon editor built with React, TypeScript and Vite. Import foreground, background and monochrome Android VectorDrawable XML, inspect rendered layers, preview launcher masks, edit XML and export Android resources or a masked 512 × 512 PNG.
+A browser-based Android launcher icon workspace built with React, TypeScript and Vite. Import or paste Android drawable XML, inspect each adaptive icon layer, preview launcher mask shapes, adjust foreground placement, and export PNGs or Android resource files.
 
 ## Run locally
 
-    npm install
-    npm run dev
+```bash
+npm install
+npm run dev
+```
 
 ## Production build
 
-    npm run build
-    npm run preview
+```bash
+npm run build
+npm run preview
+```
 
-The production output is written to dist/.
+## Editor features
 
-## Features
+- Separate foreground, background and monochrome layers with visibility controls.
+- Import XML from disk or paste XML text directly.
+- Live preview with selectable circle, squircle, rounded-square, square and teardrop mask approximations.
+- Correct 72dp safe-zone guide for the standard 108dp adaptive icon viewport.
+- Foreground scale and X/Y positioning controls.
+- XML source editing, validation feedback and unsupported-feature warnings.
+- Light and dark themes with responsive desktop, tablet and mobile layouts.
+- 512 × 512 PNG export and Android adaptive-icon resource ZIP export.
+- Local-only processing; files are not uploaded to a server.
 
-- Foreground, background and monochrome VectorDrawable XML layers.
-- Import XML either by selecting a local file or pasting XML text directly into the selected layer, with validation before applying.
-- Live preview with circle, squircle, rounded-square, square and teardrop masks.
-- Android ARGB color conversion to SVG color plus opacity.
-- Solid fills, linear/radial gradients, strokes, fill rules, stroke caps/joins and nested group transforms.
-- Basic clip-path support and stroke-based trim-path rendering.
-- Foreground scale and X/Y positioning.
-- Layer visibility controls and editable XML source.
-- XML syntax/root validation with unsupported-feature warnings.
-- Transparent PNG output when the background layer is hidden; PNG is clipped to the selected launcher mask.
-- Android resource ZIP with adaptive icon XML and optional Android 13+ monochrome drawable.
-- Light and dark themes; file processing stays in the browser.
+## VectorDrawable rendering
 
-## VectorDrawable compatibility
+The browser renderer supports static Android `<vector>` drawables, including:
 
-This is a browser renderer for common static VectorDrawable assets, not a full Android resource compiler. It supports vector roots, paths, nested groups, solid colors, alpha, strokes, fill types, linear/radial gradients, basic clip-paths and stroke-based trim-paths. Filled-path trimming is not supported. Android resource references (@color, ?attr), theme resolution, sweep gradients, animated vectors, selectors and platform-specific rendering behavior are not resolved. Unsupported elements are surfaced as warnings rather than silently treated as fully supported. Validate exported resources in Android Studio and test launcher behavior on target Android versions.
+- Viewport dimensions and root alpha.
+- Paths and Android pathData commands supported by SVG paths.
+- Fill and stroke colors, ARGB alpha, fill/stroke alpha, stroke width, caps, joins and miter limit.
+- Non-zero and even-odd fill rules.
+- Nested groups with pivot, rotation, scale and translation transforms.
+- Clip paths.
+- Linear and radial gradients, including AAPT `<aapt:attr name="android:fillColor">` gradients with explicit `<item>` color stops.
+- Basic root tint handling for common tint modes.
+- Stroke trim-path approximation.
+
+### Compatibility boundaries
+
+This is a browser-side VectorDrawable renderer, not the Android resource compiler or Android framework renderer. Android resource references such as `@color/...`, theme attributes such as `?attr/...`, color state lists, and references to resources from other files require project resources and theme context that a standalone XML file does not contain. Sweep gradients, animated vectors, animated state, selectors, drawable aliases, and platform-specific tint/blend behavior are not rendered as a full Android runtime would render them. Trim-path rendering is an SVG approximation, especially for filled and complex closed paths.
+
+When a drawable is not a static `<vector>`, the editor reports that it needs a different preview mode rather than pretending it rendered correctly. The selected launcher mask is an illustrative preview: Android launchers choose and apply the actual mask on-device. For pixel-identical results, build the resources in Android Studio and inspect them on the target Android version.
 
 ## Deploy to Vercel
 
-Import this repository in Vercel and use:
-
 - Framework preset: Vite
-- Root directory: ./
-- Build command: npm run build
-- Output directory: dist
-- Install command: npm install
-- Production branch: master
+- Root directory: `./`
+- Build command: `npm run build`
+- Output directory: `dist`
+- Install command: `npm install`
+- Production branch: `master`
 
-No server, environment variables or backend are required. A vercel.json is included for SPA fallback routing.
+No backend or environment variables are required.
 
 ## Stack
 
