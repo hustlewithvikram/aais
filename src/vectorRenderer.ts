@@ -4,7 +4,7 @@ const ANDROID_NS = 'http://schemas.android.com/apk/res/android';
 const AAPT_NS = 'http://schemas.android.com/aapt';
 
 function getAttr(node: Element, name: string, fallback = ''): string {
-  return node.getAttributeNS(ANDROID_NS, name) ?? node.getAttribute('android:' + name) ?? node.getAttribute(name) ?? fallback;
+  return node.getAttributeNS(ANDROID_NS, name) || node.getAttribute('android:' + name) || node.getAttribute(name) || fallback;
 }
 function getNumber(node: Element, name: string, fallback: number): number {
   const raw = getAttr(node, name, String(fallback)).trim().replace(/dp|dip|px$/i, '');
@@ -193,7 +193,7 @@ export function renderVector(xml: string): RenderResult {
     const tint = parseColor(rootTint);
     if (tint.unresolved) warnings.add('Root tint uses an Android resource/theme reference and cannot be resolved here.');
     else if (rootTintMode === 'src_in' || rootTintMode === 'src_atop') {
-      defs.push('<filter id="aais-tint" color-interpolation-filters="sRGB"><feFlood flood-color="' + escapeAttr(tint.color) + '"/><feComposite in2="SourceAlpha" operator="in"/><feComposite in="SourceGraphic"/></filter>');
+      defs.push('<filter id="aais-tint" color-interpolation-filters="sRGB"><feFlood flood-color="' + escapeAttr(tint.color) + '" result="tint"/><feComposite in="tint" in2="SourceAlpha" operator="in"/></filter>');
       warnings.add('Root tint is approximated in the browser; Android blend modes may render differently.');
     } else warnings.add('Root tint mode "' + rootTintMode + '" is not reproduced by the browser renderer.');
   }
