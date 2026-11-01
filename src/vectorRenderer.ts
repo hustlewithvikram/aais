@@ -154,11 +154,13 @@ export function renderVector(xml: string): RenderResult {
       const trimEnd = getNumber(node, 'trimPathEnd', 1);
       const trimOffset = getNumber(node, 'trimPathOffset', 0);
       const trimmed = trimStart !== 0 || trimEnd !== 1 || trimOffset !== 0;
-      if (trimmed) warnings.add('trimPath is approximated with SVG stroke dashes; Android path trimming may differ for complex paths.');
-      const dashLength = clamp(trimEnd - trimStart);
-      const dashOffset = -((((trimStart + trimOffset) % 1) + 1) % 1);
+      if (trimmed) warnings.add('trimPath is approximated with SVG stroke dashes. Filled-path trimming and some closed-path edge cases need Android rendering for exact parity.');
+      const normalizedStart = ((((trimStart + trimOffset) % 1) + 1) % 1);
+      const normalizedEnd = ((((trimEnd + trimOffset) % 1) + 1) % 1);
+      const dashLength = trimStart === 0 && trimEnd === 1 && trimOffset === 0 ? 1 : (normalizedEnd - normalizedStart + 1) % 1;
+      const dashOffset = -normalizedStart;
       const trimAttrs = trimmed ? ' pathLength="1" stroke-dasharray="' + dashLength + ' 1" stroke-dashoffset="' + dashOffset + '"' : '';
-      const fillValue = trimmed ? 'none' : fillPaint;
+      const fillValue = fillPaint;
       return '<path d="' + escapeAttr(pathData) + '"' + trimAttrs +
         ' fill="' + escapeAttr(fillValue) + '" fill-opacity="' + fillOpacity + '" fill-rule="' + fillType + '"' +
         ' stroke="' + escapeAttr(stroke.color) + '" stroke-opacity="' + stroke.opacity + '"' +
