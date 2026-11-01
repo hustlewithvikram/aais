@@ -1,128 +1,13 @@
 import React, { useMemo, useRef, useState } from 'react';
 import JSZip from 'jszip';
+import { renderVector } from './vectorRenderer';
 import { Upload, Download, Sun, Moon, Layers, Eye, EyeOff, RotateCcw, ZoomIn, ZoomOut, Check, AlertCircle, Palette, Code2, Image as ImageIcon, ClipboardPaste } from 'lucide-react';
 
 type Layer = 'foreground' | 'background' | 'monochrome';
-type RenderResult = { svg: string; error: string; warnings: string[] };
 const initialFg = '<vector xmlns:android="http://schemas.android.com/apk/res/android" android:width="108dp" android:height="108dp" android:viewportWidth="108" android:viewportHeight="108"><path android:fillColor="#FFFFFFFF" android:pathData="M54,18a36,36 0,1 0,0.1 0z"/><path android:fillColor="#FF6750A4" android:pathData="M54,31a23,23 0,1 0,0.1 0z"/><path android:fillColor="#FFFFFFFF" android:pathData="M49,39h10v30h-10z M39,49h30v10h-30z"/></vector>';
 const initialBg = '<vector xmlns:android="http://schemas.android.com/apk/res/android" android:width="108dp" android:height="108dp" android:viewportWidth="108" android:viewportHeight="108"><path android:fillColor="#FFD9D2E9" android:pathData="M0,0h108v108h-108z"/></vector>';
 const initialMono = '<vector xmlns:android="http://schemas.android.com/apk/res/android" android:width="108dp" android:height="108dp" android:viewportWidth="108" android:viewportHeight="108"><path android:fillColor="#FFFFFFFF" android:pathData="M54,18a36,36 0,1 0,0.1 0z"/><path android:fillColor="#FFFFFFFF" android:pathData="M49,39h10v30h-10z M39,49h30v10h-30z"/></vector>';
 
-function attr(el: Element, name: string, fallback = '') {
-  return el.getAttribute('android:' + name) || el.getAttribute(name) || fallback;
-}
-function numberAttr(el: Element, name: string, fallback: number) {
-  const value = Number(attr(el, name, String(fallback)));
-  return Number.isFinite(value) ? value : fallback;
-}
-function colorValue(value: string, alpha: number) {
-  if (!value || value === 'none' || value.startsWith('@') || value.startsWith('?')) return { color: value === 'none' ? 'none' : '#000000', opacity: value === 'none' ? 1 : alpha };
-  let color = value.trim();
-  let opacity = alpha;
-  if (/^#[0-9a-f]{8}$/i.test(color)) {
-    opacity *= parseInt(color.slice(1, 3), 16) / 255;
-    color = '#' + color.slice(3);
-  } else if (/^#[0-9a-f]{4}$/i.test(color)) {
-    const a = parseInt(color[1] + color[1], 16) / 255;
-    opacity *= a;
-    color = '#' + color[2] + color[2] + color[3] + color[3];
-  }
-  return { color, opacity: Math.max(0, Math.min(1, opacity)) };
-}
-function renderVector(xml: string): RenderResult {
-  const parser = new DOMParser();
-  const doc = parser.parseFromString(xml, 'application/xml');
-  const parseError = doc.querySelector('parsererror');
-  if (parseError) return { svg: '', error: 'XML syntax error: ' + (parseError.textContent || 'Unable to parse XML').split('\n')[0], warnings: [] };
-  const root = doc.documentElement;
-  if (!root || root.localName !== 'vector') return { svg: '', error: 'Expected an Android <vector> root element.', warnings: [] };
-  const width = numberAttr(root, 'viewportWidth', 108);
-  const height = numberAttr(root, 'viewportHeight', 108);
-  if (width <= 0 || height <= 0) return { svg: '', error: 'viewportWidth and viewportHeight must be greater than zero.', warnings: [] };
-  const warnings: string[] = [];
-  let clipId = 0, paintId = 0;
-  const defs: string[] = [];
-  const escape = (s: string) => s.replace(/&/g, '&amp;').replace(/"/g, '&quot;').replace(/</g, '&lt;');
-  const renderChildren = (parent: Element): string => {
-    let activeClip = '';
-    let output = '';
-    Array.from(parent.children).forEach(child => {
-      if (child.localName === 'clip-path') {
-        const d = attr(child, 'pathData');
-        if (d) { activeClip = 'clip' + (++clipId); defs.push('<clipPath id="' + activeClip + '"><path d="' + escape(d) + '"/></clipPath>'); }
-      } else {
-        const chunk = render(child);
-        output += activeClip && chunk ? '<g clip-path="url(#' + activeClip + ')">' + chunk + '</g>' : chunk;
-      }
-    });
-    return output;
-  };
-  const render = (node: Element): string => {
-    const tag = node.localName;
-    if (tag === 'path') {
-      const d = attr(node, 'pathData');
-      if (!d) { warnings.push('A path has no pathData and was skipped.'); return ''; }
-      const fillRaw = attr(node, 'fillColor', '#000000'), strokeRaw = attr(node, 'strokeColor', 'none');
-      if (fillRaw.startsWith('@') || fillRaw.startsWith('?') || strokeRaw.startsWith('@') || strokeRaw.startsWith('?')) warnings.push('Android color/theme references are not resolved; replace them with literal hex colors.');
-      const fillAlpha = numberAttr(node, 'fillAlpha', 1);
-      const fill = colorValue(fillRaw, fillAlpha);
-      const stroke = colorValue(strokeRaw, numberAttr(node, 'strokeAlpha', 1));
-      const gradientNode = Array.from(node.getElementsByTagName('*')).find(child => child.localName === 'gradient');
-      let fillPaint = fill.color, fillOpacity = fill.opacity;
-      if (gradientNode) {
-        const gradientType = attr(gradientNode, 'type', 'linear');
-        if (gradientType === 'sweep') {
-          warnings.push('Sweep gradients are not supported by the browser SVG renderer.');
-        } else {
-          const id = 'paint' + (++paintId);
-          const tileMode = attr(gradientNode, 'tileMode', 'clamp');
-          const spread = tileMode === 'repeat' ? 'repeat' : tileMode === 'mirror' ? 'reflect' : 'pad';
-          const start = colorValue(attr(gradientNode, 'startColor', '#000000'), 1);
-          const end = colorValue(attr(gradientNode, 'endColor', '#000000'), 1);
-          const centerRaw = attr(gradientNode, 'centerColor');
-          const center = centerRaw ? colorValue(centerRaw, 1) : null;
-          const stops = '<stop offset="0" stop-color="' + start.color + '" stop-opacity="' + start.opacity + '"/>' +
-            (center ? '<stop offset="0.5" stop-color="' + center.color + '" stop-opacity="' + center.opacity + '"/>' : '') +
-            '<stop offset="1" stop-color="' + end.color + '" stop-opacity="' + end.opacity + '"/>';
-          if (gradientType === 'radial') {
-            const cx = numberAttr(gradientNode, 'centerX', width / 2), cy = numberAttr(gradientNode, 'centerY', height / 2);
-            const radius = numberAttr(gradientNode, 'gradientRadius', Math.min(width, height) / 2);
-            defs.push('<radialGradient id="' + id + '" cx="' + cx + '" cy="' + cy + '" r="' + radius + '" gradientUnits="userSpaceOnUse" spreadMethod="' + spread + '">' + stops + '</radialGradient>');
-          } else {
-            const x1 = numberAttr(gradientNode, 'startX', 0), y1 = numberAttr(gradientNode, 'startY', 0);
-            const x2 = numberAttr(gradientNode, 'endX', width), y2 = numberAttr(gradientNode, 'endY', 0);
-            defs.push('<linearGradient id="' + id + '" x1="' + x1 + '" y1="' + y1 + '" x2="' + x2 + '" y2="' + y2 + '" gradientUnits="userSpaceOnUse" spreadMethod="' + spread + '">' + stops + '</linearGradient>');
-          }
-          fillPaint = 'url(#' + id + ')'; fillOpacity = fillAlpha;
-        }
-      }
-      const trimStart = numberAttr(node, 'trimPathStart', 0), trimEnd = numberAttr(node, 'trimPathEnd', 1), trimOffset = numberAttr(node, 'trimPathOffset', 0);
-      const isTrimmed = trimStart !== 0 || trimEnd !== 1 || trimOffset !== 0;
-      if (isTrimmed) warnings.push('trimPath is applied to the stroke; filled-path trimming is not supported.');
-      const fillType = attr(node, 'fillType') === 'evenOdd' ? 'evenodd' : 'nonzero';
-      const dashLength = Math.max(0, Math.min(1, trimEnd - trimStart));
-      const dashOffset = -(((trimStart + trimOffset) % 1 + 1) % 1);
-      const trimAttrs = isTrimmed ? ' pathLength="1" stroke-dasharray="' + dashLength + ' 1" stroke-dashoffset="' + dashOffset + '"' : '';
-      return '<path d="' + escape(d) + '"' + trimAttrs + ' fill="' + (isTrimmed ? 'none' : escape(fillPaint)) + '" fill-opacity="' + fillOpacity + '" fill-rule="' + fillType + '" stroke="' + escape(stroke.color) + '" stroke-opacity="' + stroke.opacity + '" stroke-width="' + numberAttr(node, 'strokeWidth', 0) + '" stroke-linecap="' + escape(attr(node, 'strokeLineCap', 'butt')) + '" stroke-linejoin="' + escape(attr(node, 'strokeLineJoin', 'miter')) + '" stroke-miterlimit="' + numberAttr(node, 'strokeMiterLimit', 4) + '"/>';
-    }
-    if (tag === 'clip-path') return '';
-    if (tag === 'group') {
-      const px = numberAttr(node, 'pivotX', 0), py = numberAttr(node, 'pivotY', 0);
-      const sx = numberAttr(node, 'scaleX', 1), sy = numberAttr(node, 'scaleY', 1);
-      const rotation = numberAttr(node, 'rotation', 0);
-      const tx = numberAttr(node, 'translateX', 0), ty = numberAttr(node, 'translateY', 0);
-      const transform = 'translate(' + (px + tx) + ' ' + (py + ty) + ') rotate(' + rotation + ') scale(' + sx + ' ' + sy + ') translate(' + (-px) + ' ' + (-py) + ')';
-      return '<g transform="' + transform + '">' + renderChildren(node) + '</g>';
-    }
-    if (tag === 'aapt:attr' || tag === 'attr') { warnings.push('aapt:attr resource wrappers are not supported; use a solid color.'); return ''; }
-    if (tag === 'gradient') { warnings.push('Gradient resources are not supported yet.'); return ''; }
-    if (tag !== 'vector') warnings.push('Unsupported VectorDrawable element <' + tag + '> was skipped.');
-    return Array.from(node.children).map(render).join('');
-  };
-  const body = renderChildren(root);
-  const defsBlock = defs.length ? '<defs>' + defs.join('') + '</defs>' : '';
-  return { svg: '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 ' + width + ' ' + height + '" width="' + width + '" height="' + height + '">' + defsBlock + body + '</svg>', error: '', warnings: Array.from(new Set(warnings)) };
-}
 const svgUrl = (svg: string) => 'data:image/svg+xml;charset=utf-8,' + encodeURIComponent(svg);
 const shapeClip: Record<string, string> = {
   circle: 'circle(50%)',
@@ -245,7 +130,7 @@ export default function App() {
         {pasteOpen && <div className="paste-panel"><small>Paste Android VectorDrawable XML into the <b>{active}</b> layer.</small><textarea aria-label="Paste Android VectorDrawable XML" spellCheck={false} placeholder={'<vector xmlns:android="http://schemas.android.com/apk/res/android" ...>\n    ...\n</vector>'} value={pasteText} onChange={e => {setPasteText(e.target.value);setPasteError('');}}/><button className="paste-apply" disabled={!pasteText.trim()} onClick={applyPastedXml}><Check size={14}/> Apply to {active}</button>{pasteError && <p className="error"><AlertCircle size={13}/>{pasteError}</p>}</div>}
         <p className="privacy">Files are parsed locally in your browser. Nothing is uploaded.</p></aside>
       <section className="canvas"><div className="canvas-head"><div><b>Preview canvas</b><small>Adaptive icon · 108 × 108 dp</small></div><div className="zoom"><button className="icon-button" onClick={() => {setScale(100);setX(0);setY(0)}}><RotateCcw size={15}/></button><button className="icon-button" onClick={() => setScale(Math.max(50,scale-5))}><ZoomOut size={15}/></button><span>{scale}%</span><button className="icon-button" onClick={() => setScale(Math.min(150,scale+5))}><ZoomIn size={15}/></button></div></div>
-        <div className="stage"><div className="grid-bg"/><div className="icon-preview" style={{clipPath:clip,background:showBg?bgColor:'transparent'}}>{showBg && bgResult.svg && <div className="vector" dangerouslySetInnerHTML={{__html:bgResult.svg}}/>}{(active==='monochrome'?showMono:showFg) && (active==='monochrome'?monoResult.svg:fgResult.svg) && <div className="vector foreground" style={{transform:'translate('+x+'%, '+y+'%) scale('+(scale/100)+')'}} dangerouslySetInnerHTML={{__html:active==='monochrome'?monoResult.svg:fgResult.svg}}/>}</div><div className="safe">SAFE ZONE</div><small className="hint">Select a layer to edit · Preview updates live</small></div>
+        <div className="stage"><div className="grid-bg"/><div className="icon-preview" style={{clipPath:clip,background:showBg?bgColor:'transparent'}}>{showBg && bgResult.svg && <div className="vector" dangerouslySetInnerHTML={{__html:bgResult.svg}}/>}{(active==='monochrome'?showMono:showFg) && (active==='monochrome'?monoResult.svg:fgResult.svg) && <div className="vector foreground" style={{transform:'translate('+x+'%, '+y+'%) scale('+(scale/100)+')'}} dangerouslySetInnerHTML={{__html:active==='monochrome'?monoResult.svg:fgResult.svg}}/>}<div className="safe"><span>72dp safe zone</span></div></div><small className="hint">Select a layer to edit · Preview updates live</small></div>
         <div className="shape-list"><label>LAUNCHER SHAPES</label>{Object.keys(shapeClip).map(s => <button key={s} className={shape===s?'chosen':''} onClick={() => setShape(s)}><span className={s}/>{s}</button>)}</div></section>
       <aside className="inspector"><div className="tabs"><b><Palette size={15}/> Properties</b><span><Code2 size={15}/> XML</span></div><section><div className="section-head"><b>Layer properties</b><small>{active}</small></div><label>Selected layer</label><div className="select">{active==='foreground'?'Foreground drawable':active==='background'?'Background drawable':'Monochrome drawable'} <Layers size={14}/></div>
         <label>Scale <strong>{scale}%</strong></label><input type="range" min="50" max="150" value={scale} onChange={e => setScale(+e.target.value)}/><label>Horizontal position <strong>{x}%</strong></label><input type="range" min="-20" max="20" value={x} onChange={e => setX(+e.target.value)}/><label>Vertical position <strong>{y}%</strong></label><input type="range" min="-20" max="20" value={y} onChange={e => setY(+e.target.value)}/></section>
