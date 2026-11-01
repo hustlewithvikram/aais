@@ -35,6 +35,117 @@ function parseColor(raw: string, alpha = 1): { color: string; opacity: number; u
   return { color, opacity: clamp(opacity), unresolved: false };
 }
 
+
+function renderShapeDrawable(root: Element): RenderResult {
+  const warnings = new Set<string>();
+  const defs: string[] = [];
+  let gradientId = 0;
+  const width = 108, height = 108;
+  const colorFor = (raw: string, alpha = 1) => {
+    const parsed = parseColor(raw, alpha);
+    if (parsed.unresolved) warnings.add('Android color/theme resource references are not resolved in standalone XML. Use literal colors for an exact preview.');
+    return parsed;
+  };
+  const gradientFor = (gradient: Element): string => {
+    const type = getAttr(gradient, 'type', 'linear');
+    if (type === 'sweep') {
+      warnings.add('Sweep gradients are not supported by the browser preview.');
+      return 'none';
+    }
+    const stops = [
+      { offset: 0, color: colorFor(getAttr(gradient, 'startColor', '#000000')) },
+      ...(getAttr(gradient, 'centerColor') ? [{ offset: 0.5, color: colorFor(getAttr(gradient, 'centerColor')) }] : []),
+      { offset: 1, color: colorFor(getAttr(gradient, 'endColor', '#ffffff')) }
+    ];
+    const markup = stops.map(stop => '<stop offset="' + stop.offset + '" stop-color="' + escapeAttr(stop.color.color) + '" stop-opacity="' + stop.color.opacity + '"/>').join('');
+    const id = 'aais-shape-gradient-' + (++gradientId);
+    if (type === 'radial') {
+      defs.push('<radialGradient id="' + id + '" cx="' + getNumber(gradient, 'centerX', 0.5) + '" cy="' + getNumber(gradient, 'centerY', 0.5) + '" r="' + Math.max(0.001, getNumber(gradient, 'gradientRadius', 0.5)) + '">' + markup + '</radialGradient>');
+    } else {
+      const angle = ((getNumber(gradient, 'angle', 0) % 360) + 360) % 360;
+      const radians = (angle * Math.PI) / 180;
+      const dx = Math.cos(radians), dy = Math.sin(radians);
+      defs.push('<linearGradient id="' + id + '" x1="' + (0.5 - dx / 2) + '" y1="' + (0.5 - dy / 2) + '" x2="' + (0.5 + dx / 2) + '" y2="' + (0.5 + dy / 2) + '">' + markup + '</linearGradient>');
+    }
+    return 'url(#' + id + ')';
+  };
+
+  const renderNode = (node: Element, left = 0, top = 0, right = 0, bottom = 0): string => {
+    const boxX = left, boxY = top, boxW = Math.max(0, width - left - right), boxH = Math.max(0, height - top - bottom);
+    if (node.localName === 'shape') {
+      const shape = getAttr(node, 'shape', 'rectangle');
+      const solid = Array.from(node.children).find(child => child.localName === 'solid');
+      const gradient = Array.from(node.children).find(child => child.localName === 'gradient');
+      const strokeNode = Array.from(node.children).find(child => child.localName === 'stroke');
+      const corners = Array.from(node.children).find(child => child.localName === 'corners');
+      const fill = solid ? colorFor(getAttr(solid, 'color', '#000000')) : null;
+      const paint = gradient ? gradientFor(gradient) : fill?.color || 'none';
+      const opacity = gradient ? 1 : fill?.opacity ?? 1;
+      const stroke = strokeNode ? colorFor(getAttr(strokeNode, 'color', '#000000')) : null;
+      const strokeWidth = strokeNode ? getNumber(strokeNode, 'width', 1) : 0;
+      const strokeDash = strokeNode && getNumber(strokeNode, 'dashWidth', 0) > 0
+        ? ' stroke-dasharray="' + getNumber(strokeNode, 'dashWidth', 0) + ' ' + getNumber(strokeNode, 'dashGap', 0) + '"'
+        : '';
+      const strokeAttrs = strokeNode ? ' stroke="' + escapeAttr(stroke!.color) + '" stroke-opacity="' + stroke!.opacity + '" stroke-width="' + strokeWidth + '"' + strokeDash : '';
+      if (shape === 'oval') return '<ellipse cx="' + (boxX + boxW / 2) + '" cy="' + (boxY + boxH / 2) + '" rx="' + boxW / 2 + '" ry="' + boxH / 2 + '" fill="' + escapeAttr(paint) + '" fill-opacity="' + opacity + '"' + strokeAttrs + '/>';
+      if (shape === 'line') return '<line x1="' + boxX + '" y1="' + (boxY + boxH / 2) + '" x2="' + (boxX + boxW) + '" y2="' + (boxY + boxH / 2) + '" stroke="' + escapeAttr(stroke?.color || paint) + '" stroke-opacity="' + (stroke?.opacity ?? opacity) + '" stroke-width="' + (strokeWidth || 1) + '"' + strokeDash + '/>';
+      if (shape === 'ring') {
+        warnings.add('Ring drawable level/inner-radius behavior is approximated as a stroked circle.');
+        return '<circle cx="' + (boxX + boxW / 2) + '" cy="' + (boxY + boxH / 2) + '" r="' + Math.min(boxW, boxH) * 0.34 + '" fill="none" stroke="' + escapeAttr(stroke?.color || paint) + '" stroke-opacity="' + (stroke?.opacity ?? opacity) + '" stroke-width="' + (strokeWidth || 10) + '"/>';
+      }
+      const uniform = corners ? getNumber(corners, 'radius', 0) : 0;
+      const tl = corners ? getNumber(corners, 'topLeftRadius', uniform) : uniform;
+      const tr = corners ? getNumber(corners, 'topRightRadius', uniform) : uniform;
+      const br = corners ? getNumber(corners, 'bottomRightRadius', uniform) : uniform;
+      const bl = corners ? getNumber(corners, 'bottomLeftRadius', uniform) : uniform;
+      const d = 'M ' + (boxX + tl) + ' ' + boxY + ' H ' + (boxX + boxW - tr) + ' Q ' + (boxX + boxW) + ' ' + boxY + ' ' + (boxX + boxW) + ' ' + (boxY + tr) +
+        ' V ' + (boxY + boxH - br) + ' Q ' + (boxX + boxW) + ' ' + (boxY + boxH) + ' ' + (boxX + boxW - br) + ' ' + (boxY + boxH) +
+        ' H ' + (boxX + bl) + ' Q ' + boxX + ' ' + (boxY + boxH) + ' ' + boxX + ' ' + (boxY + boxH - bl) +
+        ' V ' + (boxY + tl) + ' Q ' + boxX + ' ' + boxY + ' ' + (boxX + tl) + ' ' + boxY + ' Z';
+      return '<path d="' + d + '" fill="' + escapeAttr(paint) + '" fill-opacity="' + opacity + '"' + strokeAttrs + '/>';
+    }
+    if (node.localName === 'item') {
+      const child = Array.from(node.children).find(element => ['shape', 'layer-list', 'inset', 'rotate', 'scale'].includes(element.localName));
+      if (child) return renderNode(child, left + getNumber(node, 'left', 0), top + getNumber(node, 'top', 0), right + getNumber(node, 'right', 0), bottom + getNumber(node, 'bottom', 0));
+      const reference = getAttr(node, 'drawable');
+      if (reference) warnings.add('Drawable reference "' + reference + '" needs its referenced resource file; only inline drawable XML can be previewed.');
+      return '';
+    }
+    if (node.localName === 'layer-list') return Array.from(node.children).map(child => renderNode(child, left, top, right, bottom)).join('');
+    if (node.localName === 'inset') {
+      const child = Array.from(node.children).find(element => ['shape', 'layer-list'].includes(element.localName));
+      if (child) return renderNode(child, left + getNumber(node, 'insetLeft', 0), top + getNumber(node, 'insetTop', 0), right + getNumber(node, 'insetRight', 0), bottom + getNumber(node, 'insetBottom', 0));
+      warnings.add('Inset drawable references need their referenced resource file.');
+      return '';
+    }
+    if (node.localName === 'rotate' || node.localName === 'scale') {
+      const child = Array.from(node.children).find(element => ['shape', 'layer-list'].includes(element.localName));
+      if (!child) return '';
+      const content = renderNode(child, left, top, right, bottom);
+      if (node.localName === 'rotate') return '<g transform="rotate(' + getNumber(node, 'fromDegrees', 0) + ' ' + (width / 2) + ' ' + (height / 2) + ')">' + content + '</g>';
+      return '<g transform="translate(' + (width / 2) + ' ' + (height / 2) + ') scale(' + getNumber(node, 'scaleWidth', 1) + ' ' + getNumber(node, 'scaleHeight', 1) + ') translate(' + (-width / 2) + ' ' + (-height / 2) + ')">' + content + '</g>';
+    }
+    if (node.localName === 'selector') {
+      const firstItem = Array.from(node.children).find(child => child.localName === 'item');
+      if (firstItem) {
+        warnings.add('State-list selector preview shows its first item only. Runtime state changes are not simulated.');
+        return renderNode(firstItem, left, top, right, bottom);
+      }
+    }
+    if (node.localName === 'color') {
+      const color = colorFor(getAttr(node, 'color', '#000000'));
+      return '<rect x="' + boxX + '" y="' + boxY + '" width="' + boxW + '" height="' + boxH + '" fill="' + escapeAttr(color.color) + '" fill-opacity="' + color.opacity + '"/>';
+    }
+    if (node.localName === 'padding' || node.localName === 'size') return '';
+    warnings.add('Drawable element <' + node.localName + '> is not supported or needs an external resource.');
+    return '';
+  };
+
+  const content = renderNode(root);
+  const defsMarkup = defs.length ? '<defs>' + defs.join('') + '</defs>' : '';
+  return { svg: '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 108 108" width="108" height="108">' + defsMarkup + content + '</svg>', error: '', warnings: Array.from(warnings) };
+}
+
 export function renderVector(xml: string): RenderResult {
   const parser = new DOMParser();
   const doc = parser.parseFromString(xml, 'application/xml');
