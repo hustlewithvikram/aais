@@ -63,3 +63,8 @@ button{color:inherit;cursor:pointer}
 .shape-list:after{content:"Mask previews are illustrative; launchers apply their own system mask.";flex-basis:100%;padding:2px 7px 0;color:var(--muted);font-size:9px}
 .inspector textarea:focus,.paste-panel textarea:focus{outline:2px solid var(--accent-line);border-color:var(--accent)}
 button:focus-visible,input:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
+
+/* Inspector navigation */
+.tabs button{height:100%;display:inline-flex;align-items:center;gap:7px;padding:0 3px;border:0;border-bottom:2px solid transparent;background:transparent;color:var(--muted);font-size:11px;font-weight:600}
+.tabs button.active{border-bottom-color:var(--accent);color:var(--accent)}
+.tabs button:hover{color:var(--text)}
