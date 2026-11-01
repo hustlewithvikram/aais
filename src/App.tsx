@@ -43,6 +43,20 @@ function renderVector(xml: string): RenderResult {
   let clipId = 0;
   const defs: string[] = [];
   const escape = (s: string) => s.replace(/&/g, '&amp;').replace(/"/g, '&quot;').replace(/</g, '&lt;');
+  const renderChildren = (parent: Element): string => {
+    let activeClip = '';
+    let output = '';
+    Array.from(parent.children).forEach(child => {
+      if (child.localName === 'clip-path') {
+        const d = attr(child, 'pathData');
+        if (d) { activeClip = 'clip' + (++clipId); defs.push('<clipPath id="' + activeClip + '"><path d="' + escape(d) + '"/></clipPath>'); }
+      } else {
+        const chunk = render(child);
+        output += activeClip && chunk ? '<g clip-path="url(#' + activeClip + ')">' + chunk + '</g>' : chunk;
+      }
+    });
+    return output;
+  };
   const render = (node: Element): string => {
     const tag = node.localName;
     if (tag === 'path') {
@@ -54,27 +68,21 @@ function renderVector(xml: string): RenderResult {
       const fillType = attr(node, 'fillType') === 'evenOdd' ? 'evenodd' : 'nonzero';
       return '<path d="' + escape(d) + '" fill="' + escape(fill.color) + '" fill-opacity="' + fill.opacity + '" fill-rule="' + fillType + '" stroke="' + escape(stroke.color) + '" stroke-opacity="' + stroke.opacity + '" stroke-width="' + numberAttr(node, 'strokeWidth', 0) + '" stroke-linecap="' + escape(attr(node, 'strokeLineCap', 'butt')) + '" stroke-linejoin="' + escape(attr(node, 'strokeLineJoin', 'miter')) + '" stroke-miterlimit="' + numberAttr(node, 'strokeMiterLimit', 4) + '"/>';
     }
-    if (tag === 'clip-path') {
-      const d = attr(node, 'pathData');
-      if (!d) return '';
-      const id = 'clip' + (++clipId);
-      defs.push('<clipPath id="' + id + '"><path d="' + escape(d) + '"/></clipPath>');
-      return '<g clip-path="url(#' + id + ')">' + Array.from(node.children).map(render).join('') + '</g>';
-    }
+    if (tag === 'clip-path') return '';
     if (tag === 'group') {
       const px = numberAttr(node, 'pivotX', 0), py = numberAttr(node, 'pivotY', 0);
       const sx = numberAttr(node, 'scaleX', 1), sy = numberAttr(node, 'scaleY', 1);
       const rotation = numberAttr(node, 'rotation', 0);
       const tx = numberAttr(node, 'translateX', 0), ty = numberAttr(node, 'translateY', 0);
       const transform = 'translate(' + (px + tx) + ' ' + (py + ty) + ') rotate(' + rotation + ') scale(' + sx + ' ' + sy + ') translate(' + (-px) + ' ' + (-py) + ')';
-      return '<g transform="' + transform + '">' + Array.from(node.children).map(render).join('') + '</g>';
+      return '<g transform="' + transform + '">' + renderChildren(node) + '</g>';
     }
     if (tag === 'aapt:attr' || tag === 'attr') { warnings.push('aapt:attr resource wrappers are not supported; use a solid color.'); return ''; }
     if (tag === 'gradient') { warnings.push('Gradient resources are not supported yet.'); return ''; }
     if (tag !== 'vector') warnings.push('Unsupported VectorDrawable element <' + tag + '> was skipped.');
     return Array.from(node.children).map(render).join('');
   };
-  const body = Array.from(root.children).map(render).join('');
+  const body = renderChildren(root);
   const defsBlock = defs.length ? '<defs>' + defs.join('') + '</defs>' : '';
   return { svg: '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 ' + width + ' ' + height + '" width="' + width + '" height="' + height + '">' + defsBlock + body + '</svg>', error: '', warnings: Array.from(new Set(warnings)) };
 }
@@ -185,7 +193,7 @@ export default function App() {
         <input ref={fgInput} hidden type="file" accept=".xml,text/xml" onChange={e => e.target.files?.[0] && void importFile(e.target.files[0],'foreground')}/><input ref={bgInput} hidden type="file" accept=".xml,text/xml" onChange={e => e.target.files?.[0] && void importFile(e.target.files[0],'background')}/><input ref={monoInput} hidden type="file" accept=".xml,text/xml" onChange={e => e.target.files?.[0] && void importFile(e.target.files[0],'monochrome')}/>
         <p className="privacy">Files are parsed locally in your browser. Nothing is uploaded.</p></aside>
       <section className="canvas"><div className="canvas-head"><div><b>Preview canvas</b><small>Adaptive icon · 108 × 108 dp</small></div><div className="zoom"><button className="icon-button" onClick={() => {setScale(100);setX(0);setY(0)}}><RotateCcw size={15}/></button><button className="icon-button" onClick={() => setScale(Math.max(50,scale-5))}><ZoomOut size={15}/></button><span>{scale}%</span><button className="icon-button" onClick={() => setScale(Math.min(150,scale+5))}><ZoomIn size={15}/></button></div></div>
-        <div className="stage"><div className="grid-bg"/><div className="icon-preview" style={{clipPath:clip,background:showBg?bgColor:'transparent'}}>{showBg && bgResult.svg && <div className="vector" dangerouslySetInnerHTML={{__html:bgResult.svg}}/>}{showFg && fgResult.svg && <div className="vector foreground" style={{transform:'translate('+x+'%, '+y+'%) scale('+(scale/100)+')'}} dangerouslySetInnerHTML={{__html:fgResult.svg}}/>}</div><div className="safe">SAFE ZONE</div><small className="hint">Select a layer to edit · Preview updates live</small></div>
+        <div className="stage"><div className="grid-bg"/><div className="icon-preview" style={{clipPath:clip,background:showBg?bgColor:'transparent'}}>{showBg && bgResult.svg && <div className="vector" dangerouslySetInnerHTML={{__html:bgResult.svg}}/>}{(active==='monochrome'?showMono:showFg) && (active==='monochrome'?monoResult.svg:fgResult.svg) && <div className="vector foreground" style={{transform:'translate('+x+'%, '+y+'%) scale('+(scale/100)+')'}} dangerouslySetInnerHTML={{__html:active==='monochrome'?monoResult.svg:fgResult.svg}}/>}</div><div className="safe">SAFE ZONE</div><small className="hint">Select a layer to edit · Preview updates live</small></div>
         <div className="shape-list"><label>LAUNCHER SHAPES</label>{Object.keys(shapeClip).map(s => <button key={s} className={shape===s?'chosen':''} onClick={() => setShape(s)}><span className={s}/>{s}</button>)}</div></section>
       <aside className="inspector"><div className="tabs"><b><Palette size={15}/> Properties</b><span><Code2 size={15}/> XML</span></div><section><div className="section-head"><b>Layer properties</b><small>{active}</small></div><label>Selected layer</label><div className="select">{active==='foreground'?'Foreground drawable':active==='background'?'Background drawable':'Monochrome drawable'} <Layers size={14}/></div>
         <label>Scale <strong>{scale}%</strong></label><input type="range" min="50" max="150" value={scale} onChange={e => setScale(+e.target.value)}/><label>Horizontal position <strong>{x}%</strong></label><input type="range" min="-20" max="20" value={x} onChange={e => setX(+e.target.value)}/><label>Vertical position <strong>{y}%</strong></label><input type="range" min="-20" max="20" value={y} onChange={e => setY(+e.target.value)}/></section>
