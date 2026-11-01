@@ -1,6 +1,6 @@
 import React, { useMemo, useRef, useState } from 'react';
 import JSZip from 'jszip';
-import { Upload, Download, Sun, Moon, Layers, Eye, EyeOff, RotateCcw, ZoomIn, ZoomOut, Check, AlertCircle, Palette, Code2, Image as ImageIcon } from 'lucide-react';
+import { Upload, Download, Sun, Moon, Layers, Eye, EyeOff, RotateCcw, ZoomIn, ZoomOut, Check, AlertCircle, Palette, Code2, Image as ImageIcon, ClipboardPaste } from 'lucide-react';
 
 type Layer = 'foreground' | 'background' | 'monochrome';
 type RenderResult = { svg: string; error: string; warnings: string[] };
@@ -140,6 +140,7 @@ export default function App() {
   const [showFg, setShowFg] = useState(true), [showBg, setShowBg] = useState(true), [showMono, setShowMono] = useState(false);
   const [shape, setShape] = useState('squircle'), [scale, setScale] = useState(100), [x, setX] = useState(0), [y, setY] = useState(0);
   const [bgColor, setBgColor] = useState('#D9D2E9'), [message, setMessage] = useState('');
+  const [pasteOpen, setPasteOpen] = useState(false), [pasteText, setPasteText] = useState(''), [pasteError, setPasteError] = useState('');
   const fgInput = useRef<HTMLInputElement>(null), bgInput = useRef<HTMLInputElement>(null), monoInput = useRef<HTMLInputElement>(null);
   const fgResult = useMemo(() => renderVector(fg), [fg]), bgResult = useMemo(() => renderVector(bg), [bg]), monoResult = useMemo(() => renderVector(mono), [mono]);
   const result = active === 'foreground' ? fgResult : active === 'background' ? bgResult : monoResult;
@@ -151,6 +152,17 @@ export default function App() {
     const url = URL.createObjectURL(new Blob([content], {type}));
     const a = document.createElement('a'); a.href = url; a.download = name; a.click();
     window.setTimeout(() => URL.revokeObjectURL(url), 1000);
+  }
+  function applyPastedXml() {
+    const parsed = renderVector(pasteText);
+    if (parsed.error) { setPasteError(parsed.error); return; }
+    setCurrent(pasteText);
+    if (active === 'foreground') setFgName('pasted-foreground.xml');
+    else if (active === 'background') setBgName('pasted-background.xml');
+    else setMonoName('pasted-monochrome.xml');
+    setPasteError('');
+    setPasteOpen(false);
+    setMessage('Pasted XML applied to ' + active + ' layer');
   }
   async function importFile(file: File, layer: Layer) {
     const value = await file.text();
@@ -229,6 +241,8 @@ export default function App() {
         {layers.map(layer => <button key={layer.id} className={'layer ' + (active===layer.id?'selected':'')} onClick={() => { setActive(layer.id); if (layer.id === 'monochrome') setShowMono(true); }}><span className={'swatch ' + layer.id}/><span><b>{layer.label}</b><small>{layer.filename}</small></span><i onClick={e => {e.stopPropagation();layer.toggle();}}>{layer.visible?<Eye size={15}/>:<EyeOff size={15}/>}</i></button>)}
         <label className="import-label">IMPORT XML</label><button className="import" onClick={() => fgInput.current?.click()}><Upload size={15}/> Foreground XML <small>Browse</small></button><button className="import" onClick={() => bgInput.current?.click()}><Upload size={15}/> Background XML <small>Browse</small></button><button className="import" onClick={() => monoInput.current?.click()}><Upload size={15}/> Monochrome XML <small>Browse</small></button>
         <input ref={fgInput} hidden type="file" accept=".xml,text/xml" onChange={e => e.target.files?.[0] && void importFile(e.target.files[0],'foreground')}/><input ref={bgInput} hidden type="file" accept=".xml,text/xml" onChange={e => e.target.files?.[0] && void importFile(e.target.files[0],'background')}/><input ref={monoInput} hidden type="file" accept=".xml,text/xml" onChange={e => e.target.files?.[0] && void importFile(e.target.files[0],'monochrome')}/>
+        <button className={'paste-toggle ' + (pasteOpen ? 'open' : '')} onClick={() => { setPasteOpen(!pasteOpen); setPasteText(current); setPasteError(''); }}><ClipboardPaste size={15}/> Paste XML as text <span>{pasteOpen ? '−' : '+'}</span></button>
+        {pasteOpen && <div className="paste-panel"><small>Paste Android VectorDrawable XML into the <b>{active}</b> layer.</small><textarea aria-label="Paste Android VectorDrawable XML" spellCheck={false} placeholder={'<vector xmlns:android="http://schemas.android.com/apk/res/android" ...>\n    ...\n</vector>'} value={pasteText} onChange={e => {setPasteText(e.target.value);setPasteError('');}}/><button className="paste-apply" disabled={!pasteText.trim()} onClick={applyPastedXml}><Check size={14}/> Apply to {active}</button>{pasteError && <p className="error"><AlertCircle size={13}/>{pasteError}</p>}</div>}
         <p className="privacy">Files are parsed locally in your browser. Nothing is uploaded.</p></aside>
       <section className="canvas"><div className="canvas-head"><div><b>Preview canvas</b><small>Adaptive icon · 108 × 108 dp</small></div><div className="zoom"><button className="icon-button" onClick={() => {setScale(100);setX(0);setY(0)}}><RotateCcw size={15}/></button><button className="icon-button" onClick={() => setScale(Math.max(50,scale-5))}><ZoomOut size={15}/></button><span>{scale}%</span><button className="icon-button" onClick={() => setScale(Math.min(150,scale+5))}><ZoomIn size={15}/></button></div></div>
         <div className="stage"><div className="grid-bg"/><div className="icon-preview" style={{clipPath:clip,background:showBg?bgColor:'transparent'}}>{showBg && bgResult.svg && <div className="vector" dangerouslySetInnerHTML={{__html:bgResult.svg}}/>}{(active==='monochrome'?showMono:showFg) && (active==='monochrome'?monoResult.svg:fgResult.svg) && <div className="vector foreground" style={{transform:'translate('+x+'%, '+y+'%) scale('+(scale/100)+')'}} dangerouslySetInnerHTML={{__html:active==='monochrome'?monoResult.svg:fgResult.svg}}/>}</div><div className="safe">SAFE ZONE</div><small className="hint">Select a layer to edit · Preview updates live</small></div>
